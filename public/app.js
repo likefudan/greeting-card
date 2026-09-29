@@ -40,7 +40,7 @@ async function respond(code) {
     else if(data.error==='not_configured')message='贺卡还在准备中，请稍后再来。';
     else message='这次没能送达，请再试一次。';
   }catch{remember(Date.now()+60000);message='网络中断，暂时无法确认是否送达。';}
-  finally{sending=false;render();}
+  finally{shareLocation.checked=false;sending=false;render();}
 }
 function setActions(labels){
   actions.replaceChildren();
