@@ -36,6 +36,11 @@ export async function handle(request, env, send = fetch) {
   const actionIndex = typeof body?.action === 'string' && /^a[0-5]$/.test(body.action) ? Number(body.action.slice(1)) :
     body?.action === 'meet' ? 0 : body?.action === 'gift' ? 1 : -1;
   if (actionIndex < 0 || actionIndex >= actions.length) return json({error:'action'},400);
+  const position = body?.position;
+  if (position !== undefined && (position === null || typeof position !== 'object' || Array.isArray(position) ||
+    !Number.isFinite(position.latitude) || position.latitude < -90 || position.latitude > 90 ||
+    !Number.isFinite(position.longitude) || position.longitude < -180 || position.longitude > 180 ||
+    !Number.isFinite(position.accuracy) || position.accuracy < 0 || position.accuracy > 1000000)) return json({error:'position'},400);
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return json({error:'not_configured'},503);
   const now = Date.now(), until = now + 60000, attempt = crypto.randomUUID();
   // A conditional write on D1 serializes simultaneous submissions across devices.
@@ -45,10 +50,12 @@ export async function handle(request, env, send = fetch) {
     return json({error:'cooldown',cooldownUntil:current.cooldown_until},429,{'Retry-After':String(Math.max(1,Math.ceil((current.cooldown_until-now)/1000)))});
   }
   const time = new Intl.DateTimeFormat('zh-CN',{timeZone:env.TIME_ZONE || 'America/Los_Angeles',dateStyle:'medium',timeStyle:'short'}).format(now);
+  const locationText = position === undefined ? '位置：未共享' :
+    `位置：${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)}（设备估计精度约 ${Math.round(position.accuracy)} 米）\n地图：https://www.google.com/maps/search/?api=1&query=${position.latitude.toFixed(6)}%2C${position.longitude.toFixed(6)}`;
   try {
     const response = await send(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,{
       method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(10000),
-      body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:`💌 贺卡收到新心愿\n朋友：${card.friend_label}\n选择：${actions[actionIndex]}\n时间：${time}（${env.TIME_ZONE || 'America/Los_Angeles'}）`})
+      body:JSON.stringify({chat_id:env.TELEGRAM_CHAT_ID,text:`💌 贺卡收到新心愿\n朋友：${card.friend_label}\n选择：${actions[actionIndex]}\n时间：${time}（${env.TIME_ZONE || 'America/Los_Angeles'}）\n${locationText}`})
     });
     const result = await response.json();
     if (!response.ok || result.ok !== true) {
