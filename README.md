@@ -102,14 +102,13 @@ PY
 
 ## GitHub
 
-仓库：`likefudan/greeting-card`（公开）。代码不含真实朋友记录和密钥，GitHub Actions 已配置自动测试。GitHub 仓库还未创建时，不要把本地提交误认为已经上传。
+仓库：`likefudan/greeting-card`（公开）。代码不含真实朋友记录和密钥。GitHub Actions 已配置自动测试。
 
 ```bash
-git remote add origin https://github.com/likefudan/greeting-card.git
-git push -u origin main
+git clone https://github.com/likefudan/greeting-card.git
+cd greeting-card
+npm ci
 ```
-
-上述命令要求仓库已存在且本机 Git 已获得授权。也可在 GitHub 创建空私有仓库后，把源码文件上传；隐藏目录 `.github` 中包含 CI 配置。
 
 ## 验证范围与限制
 
@@ -119,7 +118,7 @@ Telegram 明确拒绝时立即释放冷却，允许重试；若网络超时，�
 
 最后仍需用真实 Bot 在 Cloudflare 实测：两张卡分别触发通知、连续点击仅一次、等待 60 秒后可再发、扫码对应正确朋友、手机 Telegram 通知已启用。
 
-依赖使用 Wrangler 4.x；首次 npm install 后应提交生成的 package-lock.json。上线前运行 `npx wrangler deploy --dry-run` 验证 Cloudflare 打包配置。本项目尚未提供管理后台或自动部署，防止意外覆盖已有域名配置。
+依赖使用 Wrangler 4.x，已提交 package-lock.json。使用 `npm ci` 安装固定版本。上线前可运行 `npx wrangler deploy --dry-run` 验证 Cloudflare 打包配置。本项目尚未提供管理后台或自动部署，防止意外覆盖已有域名配置。
 
 参考：
 - https://developers.cloudflare.com/workers/static-assets/

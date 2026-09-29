@@ -1,0 +1,16 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync} from 'node:fs';
+import {handle} from '../src/worker.js';
+const id='a'.repeat(32), other='b'.repeat(32);
+function environment(){const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../migrations/0001_cards.sql',import.meta.url),'utf8'));for(const token of [id,other])db.prepare('INSERT INTO cards(id,friend_label,greeting) VALUES(?,?,?)').run(token,'私密备注','你好');return{TELEGRAM_BOT_TOKEN:'test',TELEGRAM_CHAT_ID:'test',DB:{prepare(sql){return{bind(...values){return{async first(){return db.prepare(sql).get(...values)||null;},async run(){return{meta:{changes:Number(db.prepare(sql).run(...values).changes)}};}};}};}}};}
+function request(action='meet',token=id,origin='https://card.llmat.dev'){return new Request(`https://card.llmat.dev/api/cards/${token}/respond`,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({action})});}
+const success=async()=>Response.json({ok:true});
+test('simultaneous clicks send exactly once; another card remains usable',async()=>{const env=environment();let count=0;const sender=async()=>{count++;return success();};const results=await Promise.all([handle(request(),env,sender),handle(request('gift'),env,sender)]);assert.deepEqual(results.map(r=>r.status).sort(),[200,429]);assert.equal(count,1);assert.equal((await handle(request('gift',other),env,sender)).status,200);});
+test('public metadata never reveals owner-only friend label',async()=>{const data=await(await handle(new Request(`https://card.llmat.dev/api/cards/${id}`),environment())).json();assert.equal(data.greeting,'你好');assert.equal(data.friend_label,undefined);});
+test('explicit Telegram rejection permits retry',async()=>{const env=environment();assert.equal((await handle(request(),env,async()=>Response.json({ok:false},{status:403}))).status,502);assert.equal((await handle(request(),env,success)).status,200);});
+test('ambiguous delivery keeps cooldown to reduce duplicate messages',async()=>{const env=environment();const result=await handle(request(),env,async()=>{throw new Error('timeout');});assert.equal((await result.json()).error,'delivery_unknown');assert.equal((await handle(request(),env,success)).status,429);});
+test('rejects cross-origin, unknown cards and unsupported actions',async()=>{const env=environment();assert.equal((await handle(request('meet',id,'https://other.test'),env)).status,403);assert.equal((await handle(request('meet','c'.repeat(32)),env)).status,404);assert.equal((await handle(request('__proto__'),env)).status,400);});
+test('unconfigured bot does not claim cooldown',async()=>{const env=environment();delete env.TELEGRAM_BOT_TOKEN;assert.equal((await handle(request(),env)).status,503);env.TELEGRAM_BOT_TOKEN='test';assert.equal((await handle(request(),env,success)).status,200);});
+test('expired cooldown permits reuse and payload uses server label',async()=>{const env=environment();await env.DB.prepare('UPDATE cards SET cooldown_until = ? WHERE id = ?').bind(Date.now()-1,id).run();let payload;const result=await handle(request('gift'),env,async(url,options)=>{payload=JSON.parse(options.body);return success();});assert.equal(result.status,200);assert.match(payload.text,/私密备注/);assert.match(payload.text,/想要一份神秘礼物/);});
