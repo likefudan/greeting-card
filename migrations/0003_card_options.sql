@@ -1,0 +1,2 @@
+ALTER TABLE cards ADD COLUMN actions_json TEXT;
+ALTER TABLE cards ADD COLUMN theme_id TEXT NOT NULL DEFAULT 'cream';

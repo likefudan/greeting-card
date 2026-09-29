@@ -125,3 +125,11 @@ Telegram 明确拒绝时立即释放冷却，允许重试；若网络超时，�
 - https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
 - https://developers.cloudflare.com/d1/
 - https://core.telegram.org/bots/api#sendmessage
+
+## 网页管理
+
+地址：`https://card.llmat.dev/admin`。第一次部署管理功能时，随机管理密码会通过已验证的 Telegram 私聊发送给 like。密码保存在 Cloudflare Secret `ADMIN_PASSWORD`，不写入代码或公开日志。后续部署保留密码。
+
+登录后输入收卡人名字，设置 1～6 个自定义按钮，选择 10 种样式之一，即可生成专属贺卡链接和 SVG 二维码。二维码在自有后端生成，不使用外部二维码服务。管理页可以复制链接、打开贺卡、下载二维码，并分页查找以前创建的卡片。名字也会出现在贺卡祝福和 Telegram 通知中。列表展示所有贺卡，可手动删除；删除后原链接和二维码立即失效。同名可创建多张独立卡；同一次提交重试复用原卡。
+
+登录有效期 7 天，Cookie 使用 Secure、HttpOnly、SameSite=Strict；管理 API 校验身份，写请求检查同源。更换 Cloudflare Secret `ADMIN_PASSWORD` 后旧会话失效。管理密码是高熵随机值，请保存在密码管理器中。
