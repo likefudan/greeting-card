@@ -40,3 +40,9 @@ jobs:
           curl --fail --retry 5 --retry-delay 10 --retry-all-errors https://card.llmat.dev/preview -o /tmp/preview.html
           grep -q '留给你的小心意' /tmp/preview.html
           echo 'Website deployed: https://card.llmat.dev/preview' >> "$GITHUB_STEP_SUMMARY"
+      - name: Configure Telegram and verify private test card
+        run: node scripts/setup-telegram.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
