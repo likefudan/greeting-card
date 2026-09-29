@@ -59,7 +59,7 @@ async function main(){
  }
  if(!sent)fail('Worker secrets are not yet active; retry setup later.');
  const repeat=await fetch(base+'/api/cards/'+setup.card_id+'/respond',{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify({action:'gift'})});
- if(repeat.status!==429)fail('Live cooldown check failed.');
+ if(repeat.status!==429){ const result=await repeat.json().catch(()=>({error:'non_json'})); fail('Live cooldown check failed: HTTP '+repeat.status+'; code '+String(result.error||'none')); }
  await telegram('sendMessage',{chat_id:setup.chat_id,text:'✅ 贺卡通知已接通！\n上一条“今天想见你”来自上线测试。\n\n这是你的专属测试贺卡：\n'+base+'/c/'+setup.card_id+'\n\n可重复使用，每次冷却 60 秒。这个链接请保留在私聊里。'});
  await sql('UPDATE owner_setup SET completed=1 WHERE id=1');
  console.log('Telegram integration verified. Live card submission and cooldown passed. Private test link delivered to the owner.');
