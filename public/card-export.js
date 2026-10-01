@@ -74,15 +74,17 @@ export async function createCardCanvas(card,qr){
   let y=9.6;nameLines.forEach((line,i)=>ctx.fillText(line,x0,y+i*nameSize*1.15));y+=nameLines.length*nameSize*1.15+1.4;
   glyph(ctx,kind,x0+1.2,y+.6,c);ctx.fillStyle=accent;ctx.fillRect(x0+3.2,y+.5,7,.22);y+=2.8;
   ctx.fillStyle=ink;ctx.globalAlpha=.78;ctx.font=`2.3px ${titleFont}`;ctx.fillText('一点小心意，随时领取。',x0,y);ctx.globalAlpha=1;y+=4.6;
-  // Wishes as rounded tags that wrap; shrink until they fit above the signature.
-  let size=2,chips;
+  // Wishes as rounded tags that wrap. Shrink a little to fit; beyond that, print only the
+  // leading wishes that fit above the signature (the online card still shows all of them).
+  let size=2,chips;const bottom=45;
   do{
     ctx.font=`${size}px ${titleFont}`;const h=size*1.85,pad=size*.85,gap=size*.6;let cx=x0,cy=y;chips=[];
     for(const label of card.actions){let text=label,w=ctx.measureText(text).width+pad*2;
       while(w>maxW&&text.length>1){text=Array.from(text).slice(0,-2).join('')+'…';w=ctx.measureText(text).width+pad*2;}
       if(cx>x0&&cx+w>x0+maxW){cx=x0;cy+=h+gap;}chips.push({text,x:cx,y:cy,w,h,pad});cx+=w+gap;}
-    if(chips.at(-1).y+h<=45)break;size-=.05;
-  }while(size>1.2);
+    if(chips.at(-1).y+h<=bottom)break;size-=.05;
+  }while(size>1.6);
+  const cut=chips.findIndex(chip=>chip.y+chip.h>bottom);if(cut>=0)chips=chips.slice(0,Math.max(1,cut));
   for(const chip of chips){ctx.fillStyle=soft;rr(ctx,chip.x,chip.y,chip.w,chip.h,chip.h/2);ctx.fill();ctx.strokeStyle=accent;ctx.lineWidth=.14;ctx.stroke();
     ctx.fillStyle=ink;ctx.textBaseline='middle';ctx.fillText(chip.text,chip.x+chip.pad,chip.y+chip.h/2+size*.04);ctx.textBaseline='top';}
   ctx.fillStyle=ink;ctx.font=`italic 2.3px ${latin}`;const end=x0+ctx.measureText('from like').width;ctx.fillText('from like',x0,46.8);glyph(ctx,kind,end+1.8,48.1,c);
@@ -97,6 +99,7 @@ export async function createCardCanvas(card,qr){
   const hw=ctx.measureText(host).width,total=hw+ctx.measureText(path).width,ux=pxl+(panel-total)/2;
   ctx.fillStyle=accent;ctx.fillText(host,ux,pyl+panel+1.4);ctx.fillStyle=ink;ctx.fillText(path,ux+hw,pyl+panel+1.4);
   decoration(ctx,kind,c);
+  canvas.printedActions=chips.length;
   return canvas;
 }
 export function canvasToPdf(canvas){

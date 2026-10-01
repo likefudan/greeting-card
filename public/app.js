@@ -46,7 +46,7 @@ function setActions(labels){
   actions.replaceChildren();
   labels.forEach((label,index)=>{
     const button=document.createElement('button');button.type='button';button.dataset.action='a'+index;
-    const icon=document.createElement('span');icon.className='icon';icon.setAttribute('aria-hidden','true');icon.textContent=['☀','✧','♡','✿','★','♫'][index];
+    const icon=document.createElement('span');icon.className='icon';icon.setAttribute('aria-hidden','true');icon.textContent=['☀','✧','♡','✿','★','♫'][index%6];
     const title=document.createElement('span');title.textContent=label;
     const arrow=document.createElement('span');arrow.setAttribute('aria-hidden','true');arrow.textContent='↗';
     button.append(icon,title,arrow);button.onclick=()=>respond(button.dataset.action);actions.append(button);
