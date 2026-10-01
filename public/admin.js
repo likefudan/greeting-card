@@ -1,4 +1,4 @@
-import {createCardCanvas,canvasToPdf,downloadBlob} from './card-export.js';
+import {createCardCanvas,canvasToPdf,createThemeSheet,downloadBlob} from './card-export.js';
 const $=id=>document.getElementById(id);
 const themes=[['cream','奶油信笺','#f7f3eb','#d5dcbf'],['rose','玫瑰粉','#f8eaed','#dba8b9'],['sage','鼠尾草','#eaf0e6','#b4c6aa'],['night','星夜蓝','#1d2735','#d5b886'],['ocean','海盐青','#e4f0f0','#7ab4b9'],['lavender','薰衣草','#efebfa','#b8a1d3'],['sunset','落日橘','#f8e8da','#dfab7e'],['peach','蜜桃粉','#fff0e8','#efb6a0'],['sky','晴空蓝','#e8f0fc','#a4c3e8'],['paper','复古纸','#f1eee7','#c0b69e']];
 let next=null,requestId=null,requestFingerprint=null,selectedTheme='cream',selectedCard=null,editingCard=null;
@@ -53,19 +53,21 @@ api('session').then(enter).catch(()=>{});
 async function exportCard(format){
   if(!selectedCard)return;
   const card=selectedCard;
-  $('export-pdf').disabled=$('export-png').disabled=true;
-  $('status').textContent='正在排版打印卡片…';
+  const buttons=['export-pdf','export-png','export-sheet'].map($);buttons.forEach(b=>b.disabled=true);
+  $('status').textContent=format==='sheet'?'正在排版 10 种样式，可能需要几秒…':'正在排版打印卡片…';
   try{
     const response=await fetch(card.qrUrl+'?matrix=1');
     if(!response.ok)throw Error('无法获取二维码，请确认贺卡仍有效并重新登录。');
-    const canvas=await createCardCanvas(card,await response.json());
-    const blob=format==='pdf'?canvasToPdf(canvas):await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+    const qr=await response.json();let blob,printed;
+    if(format==='sheet')({blob,printedActions:printed}=await createThemeSheet(card,qr));
+    else{const canvas=await createCardCanvas(card,qr);printed=canvas.printedActions;blob=format==='pdf'?canvasToPdf(canvas):await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));}
     if(!blob)throw Error('导出失败，请重试。');
-    downloadBlob(blob,`greeting-card-${card.id}.${format}`);
-    const fit=canvas.printedActions<card.actions.length?`卡片空间有限，按顺序印了前 ${canvas.printedActions} 个按钮（共 ${card.actions.length} 个，线上贺卡仍显示全部）。`:'';
-    $('status').textContent='已导出。'+fit+'PDF 请按“实际大小 / 100%”打印，不要选择适合页面。';
+    downloadBlob(blob,format==='sheet'?`greeting-card-${card.id}-all-styles-letter.pdf`:`greeting-card-${card.id}.${format}`);
+    const fit=printed<card.actions.length?`卡片空间有限，按顺序印了前 ${printed} 个按钮（共 ${card.actions.length} 个，线上贺卡仍显示全部）。`:'';
+    $('status').textContent='已导出。'+fit+(format==='sheet'?'Letter 纸，2 列 × 5 行，沿裁切线裁开。':'')+'PDF 请按“实际大小 / 100%”打印，不要选择适合页面。';
   }catch(error){$('status').textContent=error.message;}
-  finally{$('export-pdf').disabled=$('export-png').disabled=false;}
+  finally{buttons.forEach(b=>b.disabled=false);}
 }
 $('export-pdf').onclick=()=>exportCard('pdf');
 $('export-png').onclick=()=>exportCard('png');
+$('export-sheet').onclick=()=>exportCard('sheet');
