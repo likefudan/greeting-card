@@ -1,28 +1,32 @@
 import { admin } from './admin.js';
+import { SLUG } from './card-link.js';
 const DEFAULT_ACTIONS = ['今天想见你', '想要一份神秘礼物'];
 const headers = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow', 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" };
 const json = (data, status = 200, extra = {}) => Response.json(data, { status, headers: { ...headers, ...extra } });
 export async function handle(request, env, send = fetch) {
   const url = new URL(request.url);
   if(url.pathname.startsWith('/api/admin/')) return admin(request,env,json,headers);
-  const match = url.pathname.match(/^\/api\/cards\/([a-f0-9]{32})(\/respond)?$/);
+  const match = url.pathname.match(/^\/api\/cards\/([a-f0-9]{32}|[a-z0-9]{1,12}_[a-z2-9]{6})(\/respond)?$/);
   if (!match) {
     if (url.pathname.startsWith('/api/')) return json({error:'not_found'},404);
     if (!['GET','HEAD'].includes(request.method)) return json({error:'method'},405);
-    if (!/^\/(?:c\/[a-f0-9]{32}|preview|admin|admin\/|admin.js|admin.css|card-export.js|app.js|style.css|robots.txt)?$/.test(url.pathname)) return json({error:'not_found'},404);
+    if (!SLUG.test(url.pathname.slice(1)) && !/^\/(?:c\/[a-f0-9]{32}|preview|admin|admin\/|admin.js|admin.css|card-export.js|qr-style.js|app.js|style.css|robots.txt)?$/.test(url.pathname)) return json({error:'not_found'},404);
     const asset = new URL(request.url);
     if (url.pathname === '/' || url.pathname === '/preview' || url.pathname.startsWith('/c/')) asset.pathname = '/index.html';
+    else if (SLUG.test(url.pathname.slice(1))) asset.pathname = '/index.html';
     if(url.pathname==='/admin'||url.pathname==='/admin/') asset.pathname='/admin.html';
     const response = await env.ASSETS.fetch(new Request(asset, request));
     const out = new Response(response.body, response);
     for (const [key,value] of Object.entries(headers)) out.headers.set(key,value);
     return out;
   }
-  const [, id, respond] = match;
+  const [, key, respond] = match;
   if (request.method !== (respond ? 'POST' : 'GET')) return json({error:'method'},405);
   if (respond && request.headers.get('Origin') !== url.origin) return json({error:'origin'},403);
-  const card = await env.DB.prepare('SELECT * FROM cards WHERE id = ?').bind(id).first();
+  // Cards are addressed by their short link (/keke_7hq2mx) or the original 32-hex id.
+  const card = await env.DB.prepare(`SELECT * FROM cards WHERE ${SLUG.test(key) ? 'slug' : 'id'} = ?`).bind(key).first();
   if (!card) return json({error:'not_found'},404);
+  const id = card.id;
   const actions = card.actions_json ? JSON.parse(card.actions_json) : DEFAULT_ACTIONS;
   if (!respond) return json({greeting:card.greeting, actions, theme:card.theme_id || 'cream', cooldownUntil:card.cooldown_until});
   if (!request.headers.get('Content-Type')?.startsWith('application/json')) return json({error:'content_type'},415);
