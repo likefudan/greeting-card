@@ -102,26 +102,66 @@ export async function createCardCanvas(card,qr){
   canvas.printedActions=chips.length;
   return canvas;
 }
-export function canvasToPdf(canvas){
-  // A lossless RGB image keeps QR edges crisp and supports all browser fonts.
+const pt=mm=>+(mm*72/25.4).toFixed(6);
+function rgbOf(canvas){
   const rgba=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
   const rgb=new Uint8Array(canvas.width*canvas.height*3);
   for(let i=0,j=0;i<rgba.length;i+=4){rgb[j++]=rgba[i];rgb[j++]=rgba[i+1];rgb[j++]=rgba[i+2];}
-  const w=(CARD_SIZE.width*72/25.4).toFixed(6),h=(CARD_SIZE.height*72/25.4).toFixed(6);
+  return rgb;
+}
+// Minimal one-page PDF: lossless RGB images placed by `commands` (/Im0, /Im1, …), sizes in points.
+function buildPdf(width,height,images,commands){
   const enc=new TextEncoder(),parts=[],offsets=[0];let size=0;
   const append=value=>{const bytes=typeof value==='string'?enc.encode(value):value;parts.push(bytes);size+=bytes.length;};
   const object=(id,content)=>{offsets[id]=size;append(`${id} 0 obj\n${content}\nendobj\n`);};
+  const xobjects=images.map((_,i)=>`/Im${i} ${5+i} 0 R`).join(' ');
   append('%PDF-1.4\n');
   object(1,'<< /Type /Catalog /Pages 2 0 R >>');
   object(2,'<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
-  object(3,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Resources << /XObject << /Card 4 0 R >> >> /Contents 5 0 R >>`);
-  offsets[4]=size;append(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length ${rgb.length} >>\nstream\n`);append(rgb);append('\nendstream\nendobj\n');
-  const commands=`q ${w} 0 0 ${h} 0 0 cm /Card Do Q\n`;
-  object(5,`<< /Length ${enc.encode(commands).length} >>\nstream\n${commands}endstream`);
-  const xref=size;append('xref\n0 6\n0000000000 65535 f \n');
-  for(let i=1;i<=5;i++)append(`${String(offsets[i]).padStart(10,'0')} 00000 n \n`);
-  append(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  object(3,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Resources << /XObject << ${xobjects} >> >> /Contents 4 0 R >>`);
+  object(4,`<< /Length ${enc.encode(commands).length} >>\nstream\n${commands}endstream`);
+  images.forEach((image,i)=>{
+    offsets[5+i]=size;
+    append(`${5+i} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8${image.deflated?' /Filter /FlateDecode':''} /Length ${image.data.length} >>\nstream\n`);
+    append(image.data);append('\nendstream\nendobj\n');
+  });
+  const count=5+images.length,xref=size;append(`xref\n0 ${count}\n0000000000 65535 f \n`);
+  for(let i=1;i<count;i++)append(`${String(offsets[i]).padStart(10,'0')} 00000 n \n`);
+  append(`trailer\n<< /Size ${count} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
   return new Blob(parts,{type:'application/pdf'});
+}
+export function canvasToPdf(canvas){
+  // A lossless RGB image keeps QR edges crisp and supports all browser fonts.
+  const w=pt(CARD_SIZE.width),h=pt(CARD_SIZE.height);
+  return buildPdf(w,h,[{width:canvas.width,height:canvas.height,data:rgbOf(canvas)}],`q ${w} 0 0 ${h} 0 0 cm /Im0 Do Q\n`);
+}
+// US Letter sheet: all ten themes at actual card size, 2 columns × 5 rows, with crop marks.
+export const LETTER={width:215.9,height:279.4,columns:2,rows:5,gap:4};
+export function sheetLayout(){
+  const {width,height,columns,rows,gap}=LETTER,cw=CARD_SIZE.width,ch=CARD_SIZE.height;
+  const left=(width-columns*cw-(columns-1)*gap)/2,top=(height-rows*ch)/2;
+  const slots=[];for(let r=0;r<rows;r++)for(let c=0;c<columns;c++)slots.push({x:left+c*(cw+gap),y:top+r*ch});
+  // Marks stay in the margins so they never print over a card.
+  const marks=[],len=Math.min(3,top-1);
+  for(let c=0;c<columns;c++)for(const x of [left+c*(cw+gap),left+c*(cw+gap)+cw])marks.push([x,top-1-len,x,top-1],[x,top+rows*ch+1,x,top+rows*ch+1+len]);
+  for(let r=0;r<=rows;r++){const y=top+r*ch;marks.push([left-6,y,left-1,y],[width-left+1,y,width-left+6,y]);}
+  return {slots,marks};
+}
+async function deflate(bytes){return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer());}
+export async function canvasesToSheetPdf(canvases){
+  const {slots,marks}=sheetLayout(),images=[],H=LETTER.height;let commands='';
+  for(const [i,canvas] of canvases.entries()){
+    // Ten uncompressed cards would be ~55 MB; Flate keeps the sheet small and still lossless.
+    images.push({width:canvas.width,height:canvas.height,data:await deflate(rgbOf(canvas)),deflated:true});
+    const {x,y}=slots[i];commands+=`q ${pt(CARD_SIZE.width)} 0 0 ${pt(CARD_SIZE.height)} ${pt(x)} ${pt(H-y-CARD_SIZE.height)} cm /Im${i} Do Q\n`;
+  }
+  commands+='0.3 w 0.45 G\n'+marks.map(([x1,y1,x2,y2])=>`${pt(x1)} ${pt(H-y1)} m ${pt(x2)} ${pt(H-y2)} l S`).join('\n')+'\n';
+  return buildPdf(pt(LETTER.width),pt(LETTER.height),images,commands);
+}
+export const THEME_IDS=Object.keys(themes);
+export async function createThemeSheet(card,qr){
+  const canvases=[];for(const theme of THEME_IDS)canvases.push(await createCardCanvas({...card,theme},qr));
+  return {blob:await canvasesToSheetPdf(canvases),printedActions:Math.min(...canvases.map(c=>c.printedActions))};
 }
 export function downloadBlob(blob,filename){
   const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=filename;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
