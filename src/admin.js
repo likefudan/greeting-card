@@ -5,6 +5,15 @@ const themes=['cream','rose','sage','night','ocean','lavender','sunset','peach',
 const defaults=['今天想见你','想要一份神秘礼物'];
 const encoder=new TextEncoder();
 const hex=bytes=>Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');
+function cardInput(input){
+ const name=typeof input?.name==='string'?input.name.trim():'';
+ if(!name||Array.from(name).length>60||/[\u0000-\u001f\u007f]/.test(name))throw Error('name');
+ const actions=input.actions===undefined?defaults:input.actions;
+ if(!Array.isArray(actions)||actions.length<1||actions.length>6||actions.some(x=>typeof x!=='string'||!x.trim()||Array.from(x.trim()).length>24||/[\u0000-\u001f\u007f]/.test(x)))throw Error('actions');
+ const theme=input.theme===undefined?'cream':input.theme;
+ if(!themes.includes(theme))throw Error('theme');
+ return {name,actions:actions.map(x=>x.trim()),theme};
+}
 async function sign(value,secret){const key=await crypto.subtle.importKey('raw',encoder.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);return hex(await crypto.subtle.sign('HMAC',key,encoder.encode(value)));}
 async function equal(a,b){const hashes=await Promise.all([a,b].map(s=>crypto.subtle.digest('SHA-256',encoder.encode(s))));const x=new Uint8Array(hashes[0]),y=new Uint8Array(hashes[1]);let diff=0;for(let i=0;i<x.length;i++)diff|=x[i]^y[i];return diff===0;}
 export async function authenticated(request,env){
@@ -24,8 +33,8 @@ async function body(request){
 }
 export async function admin(request,env,json,headers){
  const url=new URL(request.url),path=url.pathname;
- if(!['GET','POST','DELETE'].includes(request.method))return json({error:'method'},405);
- if(['POST','DELETE'].includes(request.method)&&request.headers.get('Origin')!==url.origin)return json({error:'origin'},403);
+ if(!['GET','POST','PATCH','DELETE'].includes(request.method))return json({error:'method'},405);
+ if(['POST','PATCH','DELETE'].includes(request.method)&&request.headers.get('Origin')!==url.origin)return json({error:'origin'},403);
  if(path==='/api/admin/login'&&request.method==='POST'){
   if(!env.ADMIN_PASSWORD)return json({error:'not_configured'},503);
   let input;try{input=await body(request);}catch{return json({error:'body'},400);}
@@ -38,13 +47,8 @@ export async function admin(request,env,json,headers){
  if(path==='/api/admin/session'&&request.method==='GET')return json({ok:true});
  if(path==='/api/admin/cards'&&request.method==='POST'){
   let input;try{input=await body(request);}catch{return json({error:'body'},400);}
-  const name=typeof input?.name==='string'?input.name.trim():'';
-  if(!name||Array.from(name).length>60||/[\u0000-\u001f\u007f]/.test(name))return json({error:'name'},400);
-  const actions=input.actions===undefined?defaults:input.actions;
-  if(!Array.isArray(actions)||actions.length<1||actions.length>6||actions.some(x=>typeof x!=='string'||!x.trim()||Array.from(x.trim()).length>24||/[\u0000-\u001f\u007f]/.test(x)))return json({error:'actions'},400);
-  const cleanActions=actions.map(x=>x.trim());
-  const theme=input.theme===undefined?'cream':input.theme;
-  if(!themes.includes(theme))return json({error:'theme'},400);
+  let fields;try{fields=cardInput(input);}catch(error){return json({error:error.message},400);}
+  const {name,actions:cleanActions,theme}=fields;
   // Client-generated UUID makes retries of the same creation idempotent.
   const key=input.requestId;
   if(typeof key!=='string'||!/^\w{8}-\w{4}-4\w{3}-[89ab]\w{3}-\w{12}$/i.test(key))return json({error:'request_id'},400);
@@ -59,6 +63,13 @@ export async function admin(request,env,json,headers){
   return json({cards:data.results.slice(0,50).map(r=>({id:r.id,cursor:r.cursor,name:r.name,actions:r.actions_json?JSON.parse(r.actions_json):defaults,theme:r.theme_id||'cream',url:url.origin+'/c/'+r.id,qrUrl:'/api/admin/cards/'+r.id+'/qr'})),next:data.results.length>50?data.results[49].cursor:null});
  }
  const cardPath=path.match(/^\/api\/admin\/cards\/([a-f0-9]{32})$/);
+ if(cardPath&&request.method==='PATCH'){
+  let fields;try{fields=cardInput(await body(request));}catch(error){return json({error:['name','actions','theme'].includes(error.message)?error.message:'body'},400);}
+  const {name,actions,theme}=fields,id=cardPath[1];
+  const updated=await env.DB.prepare('UPDATE cards SET friend_label = ?, greeting = ?, actions_json = ?, theme_id = ? WHERE id = ?').bind(name,`${name}，\n有些小心意，想留给你随时领取。`,JSON.stringify(actions),theme,id).run();
+  if(!updated.meta.changes)return json({error:'not_found'},404);
+  return json({id,name,actions,theme,url:url.origin+'/c/'+id,qrUrl:'/api/admin/cards/'+id+'/qr'});
+ }
  if(cardPath&&request.method==='DELETE'){
   const result=await env.DB.prepare('DELETE FROM cards WHERE id = ?').bind(cardPath[1]).run();
   return result.meta.changes ? json({ok:true}) : json({error:'not_found'},404);

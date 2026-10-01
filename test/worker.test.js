@@ -29,6 +29,19 @@ test('print QR matrix requires admin authentication and is unavailable after del
  const matrix=await response.json();assert.ok(matrix.size>=21);assert.equal(matrix.data.length,matrix.size**2);assert.ok(matrix.data.every(x=>x===0||x===1));
  await env.DB.prepare('DELETE FROM cards WHERE id = ?').bind(id).run();assert.equal((await handle(adminRequest(path,null,cookie),env)).status,404);
 });
+test('admin edits preserve card URL, QR matrix and cooldown while updating recipient content',async()=>{
+ const env=environment(),cookie=await login(env),path='https://card.llmat.dev/api/admin/cards/'+id;
+ const before=await(await handle(adminRequest('cards/'+id+'/qr?matrix=1',null,cookie),env)).json();
+ const until=Date.now()+60000;await env.DB.prepare('UPDATE cards SET cooldown_until = ? WHERE id = ?').bind(until,id).run();
+ const fields={name:'新名字',actions:['一起喝茶','一起旅行'],theme:'rose'};
+ const update=(data=fields,auth=cookie,origin='https://card.llmat.dev',token=id)=>new Request(path.replace(id,token),{method:'PATCH',headers:{Origin:origin,'Content-Type':'application/json',...(auth?{Cookie:auth}:{})},body:JSON.stringify(data)});
+ assert.equal((await handle(update(fields,''),env)).status,401);assert.equal((await handle(update(fields,cookie,'https://other.test'),env)).status,403);
+ assert.equal((await handle(update({...fields,actions:[]}),env)).status,400);assert.equal((await handle(update(fields,cookie,'https://card.llmat.dev','c'.repeat(32)),env)).status,404);
+ const result=await handle(update(),env);assert.equal(result.status,200);const edited=await result.json();assert.equal(edited.id,id);assert.equal(edited.url,'https://card.llmat.dev/c/'+id);
+ const publicCard=await(await handle(new Request(edited.url.replace('/c/','/api/cards/')),env)).json();assert.match(publicCard.greeting,/新名字/);assert.deepEqual(publicCard.actions,fields.actions);assert.equal(publicCard.theme,'rose');assert.equal(publicCard.cooldownUntil,until);
+ assert.deepEqual(await(await handle(adminRequest('cards/'+id+'/qr?matrix=1',null,cookie),env)).json(),before);
+ await env.DB.prepare('UPDATE cards SET cooldown_until = 0 WHERE id = ?').bind(id).run();let text;await handle(request('a1'),env,async(_,options)=>{text=JSON.parse(options.body).text;return success();});assert.match(text,/新名字/);assert.match(text,/一起旅行/);
+});
 
 test('custom actions and theme reach recipient; deleting card invalidates QR, URL, and button',async()=>{
  const env=environment(),cookie=await login(env);
