@@ -3,18 +3,39 @@ const $=id=>document.getElementById(id);
 const themes=[['cream','奶油信笺','#f7f3eb','#d5dcbf'],['rose','玫瑰粉','#f8eaed','#dba8b9'],['sage','鼠尾草','#eaf0e6','#b4c6aa'],['night','星夜蓝','#1d2735','#d5b886'],['ocean','海盐青','#e4f0f0','#7ab4b9'],['lavender','薰衣草','#efebfa','#b8a1d3'],['sunset','落日橘','#f8e8da','#dfab7e'],['peach','蜜桃粉','#fff0e8','#efb6a0'],['sky','晴空蓝','#e8f0fc','#a4c3e8'],['paper','复古纸','#f1eee7','#c0b69e']];
 let next=null,requestId=null,requestFingerprint=null,selectedTheme='cream',selectedCard=null,editingCard=null;
 async function api(path,body,method){const response=await fetch('/api/admin/'+path,{method:method||(body?'POST':'GET'),headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok){if(response.status===401){$('manager').hidden=true;$('login').hidden=false;}throw Error(({unauthorized:'请检查管理密码，或重新登录。',name:'请输入 1～60 个字的名字。',actions:'请设置 1～20 个按钮，每个按钮最多 24 个字。',theme:'请重新选择卡片样式。',not_configured:'管理入口正在准备中，请稍后再试。'}[data.error])||'暂时未能完成，请重试。');}return data;}
+const motion=()=>matchMedia('(prefers-reduced-motion: reduce)').matches?0:180;
+// FLIP: reorder the DOM, then animate each moved row from its old spot to the new one.
+function glide(list,change,skip){
+ const before=new Map([...list.children].map(c=>[c,c.offsetTop]));change();
+ for(const c of list.children){const dy=before.get(c)-c.offsetTop;if(c===skip||!dy||!motion())continue;
+  c.style.transition='none';c.style.transform=`translateY(${dy}px)`;c.offsetHeight;
+  c.style.transition=`transform ${motion()}ms ease`;c.style.transform='';}
+}
 function actionField(value='') {const div=document.createElement('div');div.className='action-field';const input=document.createElement('input');input.maxLength=24;input.required=true;input.placeholder='按钮文字';input.value=value;input.setAttribute('aria-label','按钮文字');const remove=document.createElement('button');remove.type='button';remove.className='subtle remove';remove.textContent='移除';remove.setAttribute('aria-label','移除这个按钮');remove.onclick=()=>{if($('action-fields').children.length>1)div.remove();};
  // Drag handle: pointer events work for mouse and touch; arrow keys reorder from the keyboard.
  const handle=document.createElement('button');handle.type='button';handle.className='drag';handle.textContent='⋮⋮';handle.setAttribute('aria-label','拖动排序，或按上下方向键移动');handle.title='按住拖动排序';
  handle.onpointerdown=e=>{
-  if(e.button!==0)return;e.preventDefault();const list=$('action-fields');div.classList.add('dragging');
-  const move=ev=>{const after=[...list.children].find(c=>c!==div&&ev.clientY<c.getBoundingClientRect().top+c.offsetHeight/2);if(after!==div.nextElementSibling)list.insertBefore(div,after||null);};
-  const end=()=>{div.classList.remove('dragging');removeEventListener('pointermove',move);removeEventListener('pointerup',end);removeEventListener('pointercancel',end);};
+  if(e.button!==0)return;e.preventDefault();
+  // The lifted row follows the pointer; the others glide into their new places.
+  div.style.transition='none';div.style.transform=''; // settle any glide still in flight before measuring
+  const list=$('action-fields'),grab=e.clientY-div.getBoundingClientRect().top;let shift=0;
+  div.classList.add('dragging');
+  const move=ev=>{
+   const origin=div.getBoundingClientRect().top-shift-div.offsetTop,center=ev.clientY-grab-origin+div.offsetHeight/2;
+   const after=[...list.children].find(c=>c!==div&&center<c.offsetTop+c.offsetHeight/2);
+   if(after!==div.nextElementSibling)glide(list,()=>list.insertBefore(div,after||null),div);
+   shift=ev.clientY-grab-origin-div.offsetTop;div.style.transform=`translateY(${shift}px)`;
+  };
+  const end=()=>{
+   removeEventListener('pointermove',move);removeEventListener('pointerup',end);removeEventListener('pointercancel',end);
+   div.style.transition=`transform ${motion()}ms ease`;div.style.transform='';
+   setTimeout(()=>{div.classList.remove('dragging');div.style.transition='';},motion());
+  };
   addEventListener('pointermove',move);addEventListener('pointerup',end);addEventListener('pointercancel',end);
  };
  handle.onkeydown=e=>{const list=$('action-fields');
-  if(e.key==='ArrowUp'&&div.previousElementSibling){e.preventDefault();list.insertBefore(div,div.previousElementSibling);handle.focus();}
-  else if(e.key==='ArrowDown'&&div.nextElementSibling){e.preventDefault();list.insertBefore(div.nextElementSibling,div);handle.focus();}
+  if(e.key==='ArrowUp'&&div.previousElementSibling){e.preventDefault();glide(list,()=>list.insertBefore(div,div.previousElementSibling));handle.focus();}
+  else if(e.key==='ArrowDown'&&div.nextElementSibling){e.preventDefault();glide(list,()=>list.insertBefore(div.nextElementSibling,div));handle.focus();}
  };
  div.append(handle,input,remove);$('action-fields').append(div);}
 actionField('今天想见你');actionField('想要一份神秘礼物');
