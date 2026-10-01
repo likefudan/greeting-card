@@ -1,7 +1,7 @@
 const actions = document.querySelector('.actions');
 const status = document.querySelector('#status');
 const shareLocation = document.querySelector('#share-location');
-const id = location.pathname.match(/^\/c\/([a-f0-9]{32})$/)?.[1];
+const id = location.pathname.match(/^\/(?:c\/([a-f0-9]{32})|([a-z0-9]{1,12}_[a-z2-9]{6}))$/)?.slice(1).find(Boolean);
 const preview = location.pathname === '/preview';
 const key = `card-cooldown:${id || 'preview'}`;
 let until = 0, ready = false, sending = false, message = '', locating = false;
