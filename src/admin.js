@@ -10,7 +10,7 @@ function cardInput(input){
  const name=typeof input?.name==='string'?input.name.trim():'';
  if(!name||Array.from(name).length>60||/[\u0000-\u001f\u007f]/.test(name))throw Error('name');
  const actions=input.actions===undefined?defaults:input.actions;
- if(!Array.isArray(actions)||actions.length<1||actions.length>6||actions.some(x=>typeof x!=='string'||!x.trim()||Array.from(x.trim()).length>24||/[\u0000-\u001f\u007f]/.test(x)))throw Error('actions');
+ if(!Array.isArray(actions)||actions.length<1||actions.length>20||actions.some(x=>typeof x!=='string'||!x.trim()||Array.from(x.trim()).length>24||/[\u0000-\u001f\u007f]/.test(x)))throw Error('actions');
  const theme=input.theme===undefined?'cream':input.theme;
  if(!themes.includes(theme))throw Error('theme');
  return {name,actions:actions.map(x=>x.trim()),theme};
@@ -29,7 +29,7 @@ async function body(request){
  if(!request.headers.get('Content-Type')?.startsWith('application/json'))throw Error('body');
  const reader=request.body?.getReader();if(!reader)throw Error('body');
  let length=0;const chunks=[];
- while(true){const r=await reader.read();if(r.done)break;length+=r.value.length;if(length>2048){await reader.cancel();throw Error('body');}chunks.push(r.value);}
+ while(true){const r=await reader.read();if(r.done)break;length+=r.value.length;if(length>4096){await reader.cancel();throw Error('body');}chunks.push(r.value);}
  const bytes=new Uint8Array(length);let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.length;}return JSON.parse(new TextDecoder().decode(bytes));
 }
 // Cards created before short links get one lazily; their old /c/<id> link keeps working.

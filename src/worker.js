@@ -37,7 +37,7 @@ export async function handle(request, env, send = fetch) {
   while (true) { const {value,done} = await reader.read(); if(done) break; bytes += value.byteLength; if(bytes > 1024) { await reader.cancel(); return json({error:'body'},413); } chunks.push(value); }
   let body;
   try { const buffer = new Uint8Array(bytes); let offset=0; for(const c of chunks){buffer.set(c,offset);offset+=c.length;} body=JSON.parse(new TextDecoder().decode(buffer)); } catch { return json({error:'body'},400); }
-  const actionIndex = typeof body?.action === 'string' && /^a[0-5]$/.test(body.action) ? Number(body.action.slice(1)) :
+  const actionIndex = typeof body?.action === 'string' && /^a(?:1?[0-9])$/.test(body.action) ? Number(body.action.slice(1)) :
     body?.action === 'meet' ? 0 : body?.action === 'gift' ? 1 : -1;
   if (actionIndex < 0 || actionIndex >= actions.length) return json({error:'action'},400);
   const position = body?.position;

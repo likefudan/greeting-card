@@ -63,7 +63,7 @@ test('custom actions and theme reach recipient; deleting card invalidates QR, UR
 });
 test('invalid custom buttons and theme rejected without creating a card',async()=>{
  const env=environment(),cookie=await login(env),base={name:'A',requestId:crypto.randomUUID()};
- for(const payload of [{...base,actions:[]},{...base,actions:['a'.repeat(25)]},{...base,actions:['x','y','z','1','2','3','4']}])assert.equal((await handle(adminRequest('cards',payload,cookie),env)).status,400);
+ for(const payload of [{...base,actions:[]},{...base,actions:['a'.repeat(25)]},{...base,actions:Array.from({length:21},(_,i)=>'b'+i)}])assert.equal((await handle(adminRequest('cards',payload,cookie),env)).status,400);
  assert.equal((await handle(adminRequest('cards',{...base,theme:'unknown'},cookie),env)).status,400);
  assert.equal((await handle(new Request('https://card.llmat.dev/api/admin/cards/'+id,{method:'DELETE',headers:{Origin:'https://other.test',Cookie:cookie}}),env)).status,403);
 });
@@ -85,4 +85,11 @@ test('link prefix falls back for names without letters and stays URL-safe',async
  const {namePrefix,randomCode,SLUG}=await import('../src/card-link.js');
  assert.equal(namePrefix('可可'),'keke');assert.equal(namePrefix('单雨'),'shanyu');assert.equal(namePrefix('Amy 王'),'amywang');assert.equal(namePrefix('🎉'),'card');assert.equal(namePrefix('x'.repeat(40)).length,12);
  for(let i=0;i<200;i++)assert.match(namePrefix('张')+'_'+randomCode(),SLUG);
+});
+test('cards accept up to 20 buttons and the last one can be chosen',async()=>{
+ const env=environment(),cookie=await login(env),actions=Array.from({length:20},(_,i)=>'心愿'+'很'.repeat(20)+i);
+ const res=await handle(adminRequest('cards',{name:'可可可可可可可可可可可可可可可可可可可可',actions,requestId:crypto.randomUUID()},cookie),env);assert.equal(res.status,201);const card=await res.json();assert.equal(card.actions.length,20);
+ let text;assert.equal((await handle(request('a19',card.id),env,async(_,o)=>{text=JSON.parse(o.body).text;return success();})).status,200);assert.match(text,/很19/);
+ await env.DB.prepare('UPDATE cards SET cooldown_until = 0 WHERE id = ?').bind(card.id).run();
+ for(const action of ['a20','a07','a-1'])assert.equal((await handle(request(action,card.id),env,success)).status,400);
 });
