@@ -9,7 +9,7 @@ export async function handle(request, env, send = fetch) {
   if (!match) {
     if (url.pathname.startsWith('/api/')) return json({error:'not_found'},404);
     if (!['GET','HEAD'].includes(request.method)) return json({error:'method'},405);
-    if (!/^\/(?:c\/[a-f0-9]{32}|preview|admin|admin\/|admin.js|admin.css|app.js|style.css|robots.txt)?$/.test(url.pathname)) return json({error:'not_found'},404);
+    if (!/^\/(?:c\/[a-f0-9]{32}|preview|admin|admin\/|admin.js|admin.css|card-export.js|app.js|style.css|robots.txt)?$/.test(url.pathname)) return json({error:'not_found'},404);
     const asset = new URL(request.url);
     if (url.pathname === '/' || url.pathname === '/preview' || url.pathname.startsWith('/c/')) asset.pathname = '/index.html';
     if(url.pathname==='/admin'||url.pathname==='/admin/') asset.pathname='/admin.html';

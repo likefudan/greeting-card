@@ -66,7 +66,9 @@ export async function admin(request,env,json,headers){
  const qr=path.match(/^\/api\/admin\/cards\/([a-f0-9]{32})\/qr$/);
  if(qr&&request.method==='GET'){
   const row=await env.DB.prepare('SELECT id FROM cards WHERE id = ?').bind(qr[1]).first();if(!row)return json({error:'not_found'},404);
-  const svg=SVG.render(QRCode.create(url.origin+'/c/'+row.id,{errorCorrectionLevel:'M'}),{margin:4,width:512});
+  const code=QRCode.create(url.origin+'/c/'+row.id,{errorCorrectionLevel:'M'});
+  if(url.searchParams.has('matrix'))return json({size:code.modules.size,data:Array.from(code.modules.data)});
+  const svg=SVG.render(code,{margin:4,width:512});
   return new Response(svg,{headers:{...headers,'Content-Type':'image/svg+xml','Content-Disposition':(url.searchParams.has('download')?'attachment':'inline')+'; filename="greeting-card-'+row.id+'.svg"'}});
  }
  return json({error:'not_found'},404);
